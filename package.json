@@ -7,33 +7,28 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.68",
     "@nuxt/eslint": "1.17.0",
     "@nuxt/ui": "4.11.2",
-    "@tiptap/core": "^3.31.3",
-    "@tiptap/extension-bubble-menu": "^3.31.3",
-    "@tiptap/extension-code": "^3.31.3",
-    "@tiptap/extension-collaboration": "^3.31.3",
-    "@tiptap/extension-drag-handle": "^3.31.3",
-    "@tiptap/extension-drag-handle-vue-3": "^3.31.3",
-    "@tiptap/extension-floating-menu": "^3.31.3",
-    "@tiptap/extension-horizontal-rule": "^3.31.3",
-    "@tiptap/extension-image": "^3.31.3",
-    "@tiptap/extension-mention": "^3.31.3",
-    "@tiptap/extension-node-range": "^3.31.3",
-    "@tiptap/extension-placeholder": "^3.31.3",
-    "@tiptap/markdown": "^3.31.3",
-    "@tiptap/pm": "^3.31.3",
-    "@tiptap/starter-kit": "^3.31.3",
-    "@tiptap/suggestion": "^3.31.3",
-    "@tiptap/vue-3": "^3.31.3",
+    "ai": "^7.0.122",
     "eslint": "^10.11.0",
     "nuxt": "^4.5.2",
     "tailwindcss": "^4.3.3",
+    "three": "^0.186.1",
     "typescript": "^6.0.3",
     "vue": "^3.5.43",
-    "vue-router": "^5.3.1"
+    "vue-router": "^5.3.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "vitest": "^5.0.2",
+    "vue-tsc": "^3.3.11"
   }
 }
