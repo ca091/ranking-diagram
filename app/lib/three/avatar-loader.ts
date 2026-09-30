@@ -7,7 +7,6 @@ export interface AvatarLoadTarget {
   entry: RankingEntry
   canvas: HTMLCanvasElement
   texture: CanvasTexture
-  accentHex: string
 }
 
 /**
@@ -25,8 +24,6 @@ export async function loadBillboardAvatars(
     if (isStale() || !image) continue
     drawBillboard(target.canvas, {
       name: target.entry.name,
-      rank: target.entry.rank,
-      accentHex: target.accentHex,
       image,
     })
     target.texture.needsUpdate = true

@@ -1,19 +1,16 @@
 import * as THREE from 'three'
 
-/** 名次配色（设计共识 Q23）：冷色渐变，冠军金色。纯函数。 */
-const WEAK = new THREE.Color('#1f3a5f')
-const STRONG = new THREE.Color('#58a6ff')
-const CHAMPION = new THREE.Color('#ffd166')
+/**
+ * 夜曲色板：条形完全统一（无冠军特化）；
+ * 墓地场景由背景图 bg.webp 提供，这里只保留条形与对位月光的主光色。
+ */
+export const ENTRY_EMISSIVE = '#1c2a3c'
+/** 冷月光主光颜色（对位背景图右上月轮） */
+export const MOON_COLOR = '#aebbd4'
 
-export const CHAMPION_HEX = '#ffd166'
+const ENTRY_COLOR = '#728dab'
 
-export function rankAccent(rank: number, count: number): THREE.Color {
-  if (rank === 1) return CHAMPION.clone()
-  const span = Math.max(count - 2, 1)
-  const t = Math.min(Math.max((count - rank) / span, 0), 1)
-  return WEAK.clone().lerp(STRONG, t)
-}
-
-export function rankAccentHex(rank: number, count: number): string {
-  return `#${rankAccent(rank, count).getHexString()}`
+/** 每次新建避免 three 对材质 color 的原地改写外溢到共享常量 */
+export function entryColor(): THREE.Color {
+  return new THREE.Color(ENTRY_COLOR)
 }

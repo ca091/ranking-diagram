@@ -1,18 +1,18 @@
 /**
- * Billboard 贴图绘制（设计共识 Q15）：圆形头像 + 首字母占位 + 名称，
- * 合成为一张 canvas 交给 THREE.Sprite（始终面向相机）。
+ * Billboard 贴图绘制：圆形头像 + 首字母占位 + 名称 + 名次徽章。
+ * 全部条目同一套样式（无冠军特化），仅靠徽章数字与条形高度传递名次。
  */
-import { CHAMPION_HEX } from './colors'
 
 export const BILLBOARD_W = 512
 export const BILLBOARD_H = 416
 
 const FONT_STACK = 'ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+const RING_COLOR = '#8298b6'
+/** 柱脚名次：无背景、无描边的纯灰数字 */
+const RANK_GRAY = '#8b93a1'
 
 export interface BillboardInput {
   name: string
-  rank: number
-  accentHex: string
   /** 经 /api/img 代理后成功解码的图像；缺省为首字母占位。 */
   image: HTMLImageElement | null
 }
@@ -48,78 +48,65 @@ export function drawBillboard(canvas: HTMLCanvasElement, input: BillboardInput):
   canvas.height = BILLBOARD_H
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  const { name, rank, accentHex, image } = input
-  const isChampion = rank === 1
+  const { name, image } = input
   const centerX = BILLBOARD_W / 2
   const avatarR = 132
 
   ctx.clearRect(0, 0, BILLBOARD_W, BILLBOARD_H)
 
   // 底盘圆（占位底色）
-  ctx.save()
   ctx.beginPath()
   ctx.arc(centerX, 170, avatarR + 8, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(10, 14, 24, 0.9)'
+  ctx.fillStyle = 'rgba(8, 11, 18, 0.92)'
   ctx.fill()
-  ctx.lineWidth = isChampion ? 10 : 6
-  ctx.strokeStyle = accentHex
+  ctx.lineWidth = 5
+  ctx.strokeStyle = RING_COLOR
   ctx.stroke()
-  if (isChampion) {
-    ctx.shadowColor = CHAMPION_HEX
-    ctx.shadowBlur = 28
-    ctx.stroke()
-    ctx.shadowBlur = 0
-  }
-  ctx.restore()
 
   if (image) {
     clipCover(ctx, image, centerX, 170, avatarR)
   } else {
     const initial = name.trim().charAt(0) || '?'
-    ctx.save()
     const grad = ctx.createLinearGradient(centerX - avatarR, 38, centerX + avatarR, 302)
-    grad.addColorStop(0, `${accentHex}dd`)
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.92)')
+    grad.addColorStop(0, 'rgba(52, 68, 90, 0.95)')
+    grad.addColorStop(1, 'rgba(13, 18, 28, 0.95)')
     ctx.beginPath()
     ctx.arc(centerX, 170, avatarR, 0, Math.PI * 2)
     ctx.fillStyle = grad
     ctx.fill()
-    ctx.fillStyle = '#f8fafc'
+    ctx.fillStyle = '#c9d6e8'
     ctx.font = `600 130px ${FONT_STACK}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(initial, centerX, 186)
-    ctx.restore()
   }
 
-  // 名次徽章
-  ctx.save()
-  ctx.beginPath()
-  ctx.arc(112, 92, 44, 0, Math.PI * 2)
-  ctx.fillStyle = isChampion ? CHAMPION_HEX : 'rgba(15, 23, 42, 0.92)'
-  ctx.fill()
-  ctx.lineWidth = 4
-  ctx.strokeStyle = isChampion ? '#fff7d6' : accentHex
-  ctx.stroke()
-  ctx.fillStyle = isChampion ? '#1a1505' : '#e2e8f0'
-  ctx.font = `700 ${rank > 99 ? 34 : 42}px ${FONT_STACK}`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(String(rank), 112, 96)
-  ctx.restore()
-
   // 名称
-  ctx.save()
   ctx.font = `600 44px ${FONT_STACK}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  if (isChampion) {
-    ctx.shadowColor = CHAMPION_HEX
-    ctx.shadowBlur = 18
-  }
-  ctx.fillStyle = '#f1f5f9'
+  ctx.fillStyle = '#d7dfec'
   ctx.fillText(ellipsize(name), centerX, 330)
-  ctx.restore()
+}
+
+/** 柱脚名次：透明背景，仅一个灰色数字（无任何样式） */
+const RANK_PLATE_W = 160
+const RANK_PLATE_H = 120
+/** 精灵缩放只关心高宽比，原始画布尺寸不外泄 */
+export const RANK_PLATE_ASPECT = RANK_PLATE_H / RANK_PLATE_W
+
+export function drawRankPlate(canvas: HTMLCanvasElement, rank: number): void {
+  canvas.width = RANK_PLATE_W
+  canvas.height = RANK_PLATE_H
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, RANK_PLATE_W, RANK_PLATE_H)
+
+  ctx.fillStyle = RANK_GRAY
+  ctx.font = `500 ${rank > 99 ? 62 : 78}px ${FONT_STACK}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(String(rank), RANK_PLATE_W / 2, RANK_PLATE_H / 2)
 }
 
 /** 通过 /api/img 代理加载头像；任何失败返回 null（触发首字母占位）。 */

@@ -13,7 +13,8 @@ export interface ChoreoConfig {
 }
 
 export const DEFAULT_CHOREO: ChoreoConfig = {
-  staggerMs: 120,
+  /** 出场间隔（需求：可配置，暂定 1s） */
+  staggerMs: 1000,
   growMs: 520,
   championPauseMs: 600,
 }
