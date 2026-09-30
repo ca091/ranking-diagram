@@ -11,8 +11,8 @@ const DOMESTIC_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 export const qwenPlugin: LlmProviderPlugin = {
   name: 'qwen',
   defaultModels: {
-    ranking: 'qwen-plus',
-    gate: 'qwen-turbo',
+    ranking: 'qwen3.8-flash',
+    gate: 'qwen3.8-flash',
   },
   defaultBaseUrl: DOMESTIC_BASE_URL,
   create: ({ apiKey, baseUrl }) =>

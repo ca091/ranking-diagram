@@ -10,10 +10,14 @@ export default defineNuxtConfig({
     },
   },
   // 全部密钥走环境变量（NUXT_ 前缀），源码零硬编码。见 .env.example
+  /**
+   * 这里只是"环境变量声明骨架"（Nuxt 要求先声明才能映射 NUXT_*），不是配置处。
+   * 一切实际取值只发生在 .env：provider/apiKey/baseUrl/model 的默认与兜底
+   * 统一下沉到 server/utils/llm 注册表（DEFAULT_PROVIDER / 插件 defaultModels / defaultBaseUrl）。
+   */
   runtimeConfig: {
-    /** LLM provider：anthropic | qwen（注册表见 server/utils/llm/index.ts） */
     llm: {
-      provider: 'anthropic',
+      provider: '',
       baseUrl: '',
       apiKey: '',
     },

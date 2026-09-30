@@ -10,14 +10,20 @@
 
 ## Provider 配置
 
-密钥全部走环境变量（`NUXT_` 前缀，见 `.env.example`），`NUXT_LLM_PROVIDER` 选择厂商：
+**切换模型只需要改 `.env` 一个文件**（`NUXT_` 前缀，见 `.env.example`）。三处相关文件的分工：
+
+| 位置 | 角色 | 你要动它吗 |
+| --- | --- | --- |
+| `.env` | 实际取值：provider / key / baseUrl / 模型 | ✅ 唯一配置点 |
+| `nuxt.config.ts` runtimeConfig | Nuxt 要求的环境变量**声明骨架**（保持空串） | ❌ |
+| `server/utils/llm/*.ts` | 厂商**插件**：默认模型/端点/构造器（代码） | 仅新增厂商时 |
 
 | Provider | 默认模型（ranking / gate） | 默认端点 |
 | --- | --- | --- |
-| `anthropic` | claude-sonnet-5 / claude-haiku-4-5-20251001 | api.anthropic.com（可 `NUXT_LLM_BASE_URL` 覆盖走中转） |
+| `anthropic`（缺省） | claude-sonnet-5 / claude-haiku-4-5-20251001 | api.anthropic.com（可 `NUXT_LLM_BASE_URL` 覆盖走中转） |
 | `qwen` | qwen-plus / qwen-turbo | DashScope 国内站 compatible-mode |
 
-`NUXT_MODEL_RANKING` / `NUXT_MODEL_GATE` 留空即用当前 provider 默认模型。
+`NUXT_LLM_PROVIDER` 留空 = anthropic；`NUXT_MODEL_RANKING` / `NUXT_MODEL_GATE` 留空 = 当前 provider 的默认模型。用千问只需三行：`NUXT_LLM_PROVIDER=qwen` + `NUXT_LLM_API_KEY=sk-…` + 重启。
 
 ### 扩展新 Provider
 

@@ -141,7 +141,7 @@ export default defineEventHandler(async (event) => {
 
   const runtime = useRuntimeConfig(event)
   const config: ServerConfig = {
-    llmProvider: runtime.llm.provider || 'anthropic',
+    llmProvider: runtime.llm.provider,
     llmBaseUrl: runtime.llm.baseUrl,
     llmApiKey: runtime.llm.apiKey,
     modelRanking: runtime.modelRanking,

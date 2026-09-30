@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { listProviders, makeLlmModel, resolveBaseUrl, resolvePlugin } from '../server/utils/llm'
+import { DEFAULT_PROVIDER, listProviders, makeLlmModel, resolveBaseUrl, resolvePlugin } from '../server/utils/llm'
 import { checkGenerationConfig, ConfigError, type ServerConfig } from '../server/utils/config'
 
 function makeConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
@@ -29,6 +29,11 @@ describe('LLM provider 注册表', () => {
       expect(message).toContain('anthropic')
       expect(message).toContain('qwen')
     }
+  })
+
+  it('provider 留空 = 缺省厂商（默认值只存在于注册表一处）', () => {
+    expect(DEFAULT_PROVIDER).toBe('anthropic')
+    expect(makeLlmModel(makeConfig({ llmProvider: '' }), 'ranking')).toBeTruthy()
   })
 
   it('缺 key 时 makeLlmModel 快速失败', () => {

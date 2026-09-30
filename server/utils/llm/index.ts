@@ -31,6 +31,9 @@ const plugins: Record<string, LlmProviderPlugin> = {
   [qwenPlugin.name]: qwenPlugin,
 }
 
+/** 未配置 NUXT_LLM_PROVIDER 时的缺省厂商（全项目唯一出现处） */
+export const DEFAULT_PROVIDER = anthropicPlugin.name
+
 export function listProviders(): string[] {
   return Object.keys(plugins)
 }
@@ -54,7 +57,7 @@ export function resolveBaseUrl(configured: string, pluginDefault: string): strin
 
 /** 配置 → 模型实例的唯一入口（gate/agent 都用它，保证行为一致）。 */
 export function makeLlmModel(config: ServerConfig, purpose: ModelPurpose): LanguageModel {
-  const plugin = resolvePlugin(config.llmProvider)
+  const plugin = resolvePlugin(config.llmProvider.trim() || DEFAULT_PROVIDER)
   const apiKey = config.llmApiKey
   if (!apiKey) {
     throw new ConfigError('NUXT_LLM_API_KEY 未配置')
