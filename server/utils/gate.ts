@@ -6,7 +6,7 @@ import { generateText, Output, NoObjectGeneratedError } from 'ai'
 import { gateResultSchema, clampCount, MAX_COUNT } from '#shared/ranking'
 import type { GateResult } from '#shared/ranking'
 import type { ServerConfig } from './config'
-import { makeAnthropic } from './provider'
+import { makeLlmModel } from './llm'
 
 export interface GateDecision {
   valid: boolean
@@ -62,10 +62,10 @@ export async function runGate(
   prompt: string,
   options: { signal?: AbortSignal },
 ): Promise<GateDecision> {
-  const anthropic = makeAnthropic(config)
+  const model = makeLlmModel(config, 'gate')
   try {
     const { output } = await generateText({
-      model: anthropic(config.modelGate),
+      model,
       system: GATE_SYSTEM,
       prompt,
       output: Output.object({ schema: gateResultSchema }),

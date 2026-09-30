@@ -1,75 +1,51 @@
-# Nuxt Minimal Starter
+# Ranking Stage · 排行舞台
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+输入符合排行语义的 prompt → 联网检索取证 → 生成带来源的数据化排行 → 3D 舞台从左到右逐条入场，冠军金色压轴。
 
-## Setup
+## 管线
 
-Make sure to install dependencies:
+1. **Gate**（轻量模型）：校验可排行性 + 规范化请求（条数 clamp 3~50，默认 30）；不合格直接拦截并给改写建议
+2. **Ranking agent**（主力模型，Vercel AI SDK）：`web_search` 工具接 Tavily，硬顶搜索 ≤12 次 / 25 步 / 120s；结构化输出经 zod + 单调性/去重/连续性校验，失败自动修复 1 次
+3. **SSE** 分阶段推送进度（校验 → 检索排行 → 定稿）；结果进内存 TTL/LRU 缓存，"重新生成"可强制绕过
+
+## Provider 配置
+
+密钥全部走环境变量（`NUXT_` 前缀，见 `.env.example`），`NUXT_LLM_PROVIDER` 选择厂商：
+
+| Provider | 默认模型（ranking / gate） | 默认端点 |
+| --- | --- | --- |
+| `anthropic` | claude-sonnet-5 / claude-haiku-4-5-20251001 | api.anthropic.com（可 `NUXT_LLM_BASE_URL` 覆盖走中转） |
+| `qwen` | qwen-plus / qwen-turbo | DashScope 国内站 compatible-mode |
+
+`NUXT_MODEL_RANKING` / `NUXT_MODEL_GATE` 留空即用当前 provider 默认模型。
+
+### 扩展新 Provider
+
+注册表在 `server/utils/llm/index.ts`，三步：
+
+1. 新建 `server/utils/llm/<name>.ts`，导出一个 `LlmProviderPlugin`（`name` + `defaultModels` + `defaultBaseUrl` + `create` 工厂）。OpenAI 兼容端点（DeepSeek / GLM / Kimi / vLLM…）直接复用 `createOpenAICompatible`；
+2. 在 `index.ts` 的 `plugins` 注册；
+3. `.env.example` 的 `NUXT_LLM_PROVIDER` 注释补取值。
+
+`gate.ts` / `agent.ts` 只调 `makeLlmModel(config, 'gate' | 'ranking')`，无需任何改动。
+
+## 头像代理
+
+条目 `avatarUrl` 经 `/api/img?url=` 代理（伪装 Referer、仅放行 image/\*、8MB 上限、逐跳重定向 SSRF 校验、TTL 缓存）；失败降级为首字母+名次色占位。
+
+## 本地开发
 
 ```bash
-# npm
-npm install
-
-# pnpm
 pnpm install
+cp .env.example .env   # 填 NUXT_LLM_API_KEY、NUXT_TAVILY_API_KEY
 
-# yarn
-yarn install
+pnpm dev               # 真实管线
+NUXT_USE_FIXTURE=1 pnpm dev   # 无密钥演示模式（内置 30 条样例走完整 SSE+动效）
 
-# bun
-bun install
+pnpm test              # vitest（管线纯逻辑 + provider 注册表 + 时间线）
+pnpm typecheck
 ```
 
-## Development Server
+## 测试
 
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
-```
-
-## Production
-
-Build the application for production:
-
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+`tests/` 覆盖：数量护栏、结构校验（名次连续/分数单调/去重）、gate 归一化、TTL/LRU 缓存、SSRF 守卫、搜索预算、入场时间线、LLM provider 注册表。3D 动效为浏览器人工验收。

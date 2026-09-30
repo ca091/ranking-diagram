@@ -10,7 +10,7 @@ import type { RankingIssue, RankingResult } from '#shared/ranking'
 import { MAX_SEARCHES, MAX_STEPS } from './limits'
 import { buildSearchTool, createSearchRunner } from './search'
 import type { ServerConfig } from './config'
-import { makeAnthropic } from './provider'
+import { makeLlmModel } from './llm'
 import { errorMessage } from './errors'
 import type { SseEvent } from '#shared/events'
 
@@ -112,8 +112,7 @@ export interface AgentDeps {
 
 export async function runRankingAgent(deps: AgentDeps): Promise<RankingResult> {
   const { config, prompt, count, emit, signal } = deps
-  const anthropic = makeAnthropic(config)
-  const model = anthropic(config.modelRanking)
+  const model = makeLlmModel(config, 'ranking')
   const schema = buildTaskSchema(count)
 
   const runner = createSearchRunner({
