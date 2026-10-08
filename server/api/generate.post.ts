@@ -8,11 +8,13 @@ import type { RankingResult } from '#shared/ranking'
 import { createEmitter } from '../utils/emitter'
 import { checkGenerationConfig, type ServerConfig } from '../utils/config'
 import { runGate, GateError } from '../utils/gate'
+import type { GateDecision } from '../utils/gate'
 import { runRankingAgent, AgentError } from '../utils/agent'
 import { FIXTURE_RANKING } from '../utils/fixture'
 import { createTtlCache, resultCacheKey } from '../utils/cache'
-import { errorMessage } from '../utils/errors'
-import { TOTAL_TIMEOUT_MS, RESULT_CACHE_MAX, RESULT_CACHE_TTL_MS } from '../utils/limits'
+import { describeLlmError, errorMessage } from '../utils/errors'
+import { DEFAULT_TOTAL_TIMEOUT_MS, RESULT_CACHE_MAX, RESULT_CACHE_TTL_MS } from '../utils/limits'
+import { createRunLogger } from '../utils/run-log' // [generation-log] 剥离时删除本行
 
 type CachedPayload = Omit<ResultPayload, 'cached' | 'fixture'>
 
@@ -35,28 +37,64 @@ interface PipelineContext {
   abortedByWatchdog: () => boolean
 }
 
+/** fixture 分支：不碰任何外部依赖，把内置数据按真实节奏走一遍事件协议。 */
+async function emitFixture(ctx: PipelineContext): Promise<void> {
+  const { prompt, emit } = ctx
+  emit({ type: 'stage', data: { phase: 'validating', label: '校验可排行性…（fixture 模式跳过）' } })
+  await sleep(250)
+  emit({ type: 'stage', data: { phase: 'ranking', label: '检索资料（fixture 直供数据 1/3）' } })
+  await sleep(400)
+  emit({ type: 'stage', data: { phase: 'ranking', label: '聚合多源共识、定名次（fixture）' } })
+  await sleep(400)
+  emit({
+    type: 'result',
+    data: {
+      result: FIXTURE_RANKING,
+      count: FIXTURE_RANKING.entries.length,
+      clamped: false,
+      requestedCount: null,
+      normalizedPrompt: prompt,
+      cached: false,
+      fixture: true,
+    },
+  })
+}
+
+/** gate 阶段：成功返回判定；失败已 emit error 并返回 'halted'。 */
+async function gateStage(ctx: PipelineContext): Promise<GateDecision | 'halted'> {
+  const { config, prompt, emit, signal } = ctx
+  emit({ type: 'stage', data: { phase: 'validating', label: '判断可排行性…' } })
+  let decision
+  try {
+    decision = await runGate(config, prompt, { ...(signal.aborted ? {} : { signal }) })
+  } catch (error) {
+    if (ctx.abortedByWatchdog()) return 'halted'
+    if (error instanceof GateError) {
+      emit({ type: 'error', data: { phase: 'validating', message: `校验失败：${error.message}`, retryable: true } })
+    } else {
+      // 上游 4xx 常带厂商错误体（模型名/协议/配额问题），解出来直接可见
+      emit({ type: 'error', data: { phase: 'validating', message: `校验失败：${describeLlmError(error)}`, retryable: true } })
+    }
+    return 'halted'
+  }
+  if (!decision.valid) {
+    emit({ type: 'reject', data: { reason: decision.reason ?? '该主题无法真实排行', ...(decision.suggestion ? { suggestion: decision.suggestion } : {}) } })
+    return 'halted'
+  }
+  if (decision.clamped && decision.requestedCount) {
+    emit({
+      type: 'stage',
+      data: { phase: 'validating', label: `数量按护栏截取：${decision.requestedCount} → ${decision.count}` },
+    })
+  }
+  return decision
+}
+
 async function executePipeline(ctx: PipelineContext): Promise<void> {
   const { config, prompt, force, emit, signal } = ctx
 
   if (config.useFixture) {
-    emit({ type: 'stage', data: { phase: 'validating', label: '校验可排行性…（fixture 模式跳过）' } })
-    await sleep(250)
-    emit({ type: 'stage', data: { phase: 'ranking', label: '检索资料（fixture 直供数据 1/3）' } })
-    await sleep(400)
-    emit({ type: 'stage', data: { phase: 'ranking', label: '聚合多源共识、定名次（fixture）' } })
-    await sleep(400)
-    emit({
-      type: 'result',
-      data: {
-        result: FIXTURE_RANKING,
-        count: FIXTURE_RANKING.entries.length,
-        clamped: false,
-        requestedCount: null,
-        normalizedPrompt: prompt,
-        cached: false,
-        fixture: true,
-      },
-    })
+    await emitFixture(ctx)
     return
   }
 
@@ -81,27 +119,8 @@ async function executePipeline(ctx: PipelineContext): Promise<void> {
     return
   }
 
-  emit({ type: 'stage', data: { phase: 'validating', label: '判断可排行性…' } })
-  let decision
-  try {
-    decision = await runGate(config, prompt, { ...(signal.aborted ? {} : { signal }) })
-  } catch (error) {
-    if (ctx.abortedByWatchdog()) return
-    const message = error instanceof GateError || error instanceof Error ? errorMessage(error) : '未知错误'
-    emit({ type: 'error', data: { phase: 'validating', message: `校验失败：${message}`, retryable: true } })
-    return
-  }
-
-  if (!decision.valid) {
-    emit({ type: 'reject', data: { reason: decision.reason ?? '该主题无法真实排行', ...(decision.suggestion ? { suggestion: decision.suggestion } : {}) } })
-    return
-  }
-  if (decision.clamped && decision.requestedCount) {
-    emit({
-      type: 'stage',
-      data: { phase: 'validating', label: `数量按护栏截取：${decision.requestedCount} → ${decision.count}` },
-    })
-  }
+  const decision = await gateStage(ctx)
+  if (decision === 'halted') return
 
   emit({ type: 'stage', data: { phase: 'ranking', label: '开始检索与排行…' } })
   let result: RankingResult
@@ -148,7 +167,20 @@ export default defineEventHandler(async (event) => {
     modelGate: runtime.modelGate,
     tavilyApiKey: runtime.tavilyApiKey,
     useFixture: isTruthyFlag(runtime.useFixture),
+    llmTimeoutMs: typeof runtime.llmTimeoutMs === 'number' ? runtime.llmTimeoutMs : 0,
+    llmThinking: isTruthyFlag(runtime.llmThinking),
   }
+
+  // [generation-log] begin：任务级结构化日志，旁路订阅事件流，业务零侵入
+  //（实现与剥离步骤见 server/utils/run-log.ts 头注释）
+  const timeoutMs = config.llmTimeoutMs > 0 ? config.llmTimeoutMs : DEFAULT_TOTAL_TIMEOUT_MS
+  const runLogger = createRunLogger({
+    enabled: isTruthyFlag(runtime.logGeneration),
+    config,
+    prompt,
+    timeoutMs,
+  })
+  // [generation-log] end
 
   setHeader(event, 'Content-Type', 'text/event-stream; charset=utf-8')
   setHeader(event, 'Cache-Control', 'no-cache, no-transform')
@@ -170,11 +202,14 @@ export default defineEventHandler(async (event) => {
         }
       }
       const unsubscribe = emitter.on(send)
+      const unsubscribeLog = emitter.on(runLogger.onEvent) // [generation-log]
 
       const finish = () => {
         clearTimeout(watchdog)
         unsubscribe()
+        unsubscribeLog() // [generation-log]
         send({ type: 'done' })
+        runLogger.finish() // [generation-log]
         try {
           streamController.close()
         } catch {
@@ -189,12 +224,12 @@ export default defineEventHandler(async (event) => {
           type: 'error',
           data: {
             phase: 'timeout',
-            message: `生成超过 ${Math.round(TOTAL_TIMEOUT_MS / 1000)}s 硬超时，可点击重试或收窄排行主题`,
+            message: `生成超过 ${Math.round(timeoutMs / 1000)}s 超时，可点击重试、收窄排行主题，或调大 NUXT_LLM_TIMEOUT_MS（推理型模型偏慢）`,
             retryable: true,
           },
         })
         finish()
-      }, TOTAL_TIMEOUT_MS)
+      }, timeoutMs)
 
       void executePipeline({
         config,
