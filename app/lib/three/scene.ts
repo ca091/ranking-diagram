@@ -455,12 +455,14 @@ export class RankingStage {
   /**
    * 背景图 cover 裁切（等效 CSS background-size: cover）：
    * 宽屏时按高度裁切、偏上锚定保住月轮；窄屏时按宽度裁切、水平居中。
+   * 宽高比直接读容器而非 camera.aspect——camera.aspect 要到 fitCamera 才更新，
+   * 依赖它会让背景永远按上一帧视口计算（resize 时画面被非等比拉扁的根因）。
    */
   private applyBackgroundCover(): void {
     const image = this.bgTexture.image as { width?: number; height?: number } | undefined
     if (!image?.width || !image.height) return
     const imageAspect = image.width / image.height
-    const viewportAspect = this.camera.aspect
+    const viewportAspect = (this.container.clientWidth || 1) / (this.container.clientHeight || 1)
     if (viewportAspect > imageAspect) {
       const visible = imageAspect / viewportAspect
       this.bgTexture.repeat.set(1, visible)

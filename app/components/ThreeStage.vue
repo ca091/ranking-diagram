@@ -33,6 +33,8 @@ const containerRef = ref<HTMLElement | null>(null)
 const scrollRef = ref<HTMLElement | null>(null)
 const stage = shallowRef<StageHandle | null>(null)
 const hover = ref<HoverInfo | null>(null)
+const tooltipRef = ref<HTMLElement | null>(null)
+const tooltipStyle = ref({ left: '0px', top: '0px' })
 const webglError = ref(false)
 /** 内容超宽时的滚动代理宽度（px）；0 = 无需滚动 */
 const scrollInnerPx = ref(0)
@@ -121,6 +123,29 @@ watch(
   },
 )
 
+/**
+ * hover 卡片收进视口：水平按半宽 clamp（贴边柱体不再被裁），
+ * 垂直优先放在锚点（柱顶）上方，高度不够（近顶部的长柱）翻到下方。
+ * 需要先渲染才能量到卡片实际尺寸，故在 hover 更新的下一帧精确定位。
+ */
+watch(hover, async (h) => {
+  if (!h) return
+  tooltipStyle.value = { left: `${h.x}px`, top: `${Math.max(h.y - 10, 10)}px` }
+  await nextTick()
+  const el = tooltipRef.value
+  const holder = containerRef.value
+  if (!el || !holder) return
+  const pad = 10
+  const cardW = el.offsetWidth
+  const cardH = el.offsetHeight
+  const viewW = holder.clientWidth
+  const viewH = holder.clientHeight
+  const left = Math.min(Math.max(h.x, cardW / 2 + pad), Math.max(viewW - cardW / 2 - pad, pad))
+  const above = h.y - 10 - cardH
+  const top = above >= pad ? above : Math.min(h.y + 18, Math.max(viewH - cardH - pad, pad))
+  tooltipStyle.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` }
+})
+
 function replay() {
   hover.value = null
   stage.value?.replay()
@@ -167,8 +192,9 @@ onBeforeUnmount(() => {
 
     <div
       v-if="hover && showChrome !== false"
-      class="pointer-events-none absolute z-20 w-78 max-w-[80vw] -translate-x-1/2 -translate-y-full rounded-lg border border-white/15 bg-slate-950/92 p-3 text-xs shadow-2xl backdrop-blur"
-      :style="{ left: `${hover.x}px`, top: `${Math.max(hover.y - 10, 130)}px` }"
+      ref="tooltipRef"
+      class="pointer-events-none absolute z-20 w-78 max-w-[80vw] -translate-x-1/2 rounded-lg border border-white/15 bg-slate-950/92 p-3 text-xs shadow-2xl backdrop-blur"
+      :style="tooltipStyle"
     >
       <div class="mb-1 flex items-center gap-2">
         <span class="rounded bg-zinc-500/70 px-1.5 py-0.5 font-bold text-zinc-100">#{{ hover.entry.rank }}</span>

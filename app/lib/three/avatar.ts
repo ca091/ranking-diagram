@@ -109,20 +109,51 @@ export function drawRankPlate(canvas: HTMLCanvasElement, rank: number): void {
   ctx.fillText(String(rank), RANK_PLATE_W / 2, RANK_PLATE_H / 2)
 }
 
-/** 通过 /api/img 代理加载头像；任何失败返回 null（触发首字母占位）。 */
+/**
+ * 通过 /api/img 代理加载头像；任何失败返回 null（触发首字母占位）。
+ *
+ * 缓存策略（评审后修正——失败不能永久判死）：
+ * - 成功：会话级长期缓存，共享已解码的 HTMLImageElement（同 URL 多条目 / 重建场景零成本）；
+ * - 失败：60s 冷却窗口（与服务器负缓存同量级），窗口内直接给 null，窗口后可重试——
+ *   瞬断/上游 5xx 不再连坐整个会话；编造 URL 的风暴同样被窗口掐灭（配合服务端负缓存）。
+ */
+const PROXY_CACHE_MAX = 160
+const PROXY_FAIL_COOLDOWN_MS = 60_000
+const proxyCache = new Map<string, Promise<HTMLImageElement | null>>()
+const failedUntil = new Map<string, number>()
+
 export function loadProxyImage(avatarUrl: string, timeoutMs = 8000): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
+  const src = `/api/img?url=${encodeURIComponent(avatarUrl)}`
+  const cached = proxyCache.get(src)
+  if (cached) return cached
+  if ((failedUntil.get(src) ?? 0) > Date.now()) return Promise.resolve(null)
+  if (proxyCache.size >= PROXY_CACHE_MAX) {
+    const oldest = proxyCache.keys().next()
+    if (!oldest.done) proxyCache.delete(oldest.value)
+  }
+  const pending = new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image()
     let settled = false
     const finish = (value: HTMLImageElement | null) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (!value) {
+        // 失败退出复用池，只留带 TTL 的冷却记录
+        proxyCache.delete(src)
+        failedUntil.set(src, Date.now() + PROXY_FAIL_COOLDOWN_MS)
+      }
+      if (failedUntil.size > PROXY_CACHE_MAX) {
+        const oldestFail = failedUntil.keys().next()
+        if (!oldestFail.done) failedUntil.delete(oldestFail.value)
+      }
       resolve(value)
     }
     const timer = setTimeout(() => finish(null), timeoutMs)
     img.onload = () => finish(img)
     img.onerror = () => finish(null)
-    img.src = `/api/img?url=${encodeURIComponent(avatarUrl)}`
+    img.src = src
   })
+  proxyCache.set(src, pending)
+  return pending
 }

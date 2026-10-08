@@ -6,7 +6,7 @@
 import { defineEventHandler, getQuery, createError } from 'h3'
 import { isSafeImageUrl } from '../utils/ssrf'
 import { createTtlCache } from '../utils/cache'
-import { IMAGE_CACHE_MAX, IMAGE_CACHE_TTL_MS, IMAGE_FETCH_TIMEOUT_MS, IMAGE_MAX_BYTES } from '../utils/limits'
+import { IMAGE_CACHE_MAX, IMAGE_CACHE_TTL_MS, IMAGE_FAIL_CACHE_TTL_MS, IMAGE_FETCH_TIMEOUT_MS, IMAGE_MAX_BYTES } from '../utils/limits'
 
 interface CachedImage {
   body: ArrayBuffer
@@ -14,6 +14,19 @@ interface CachedImage {
 }
 
 const imageCache = createTtlCache<CachedImage>({ ttlMs: IMAGE_CACHE_TTL_MS, maxEntries: IMAGE_CACHE_MAX })
+
+/**
+ * 失败 URL 的负缓存：模型给出的 avatarUrl 相当一部分是编造/失效链接（404 重灾区），
+ * 不记失败的话每次重建场景都会重新打上游，Network 面板被同源 404 刷屏。
+ * 短 TTL（2 分钟）：链接可能临时故障，也给重试留窗口。
+ */
+const negativeCache = createTtlCache<true>({ ttlMs: IMAGE_FAIL_CACHE_TTL_MS, maxEntries: IMAGE_CACHE_MAX * 2 })
+
+/** 上游拿不到图时统一走这里：记负例 + 抛给客户端同款 404。 */
+function failUpstream(url: string, causeStatus: number): never {
+  negativeCache.set(url, true)
+  throw createError({ statusCode: 404, statusMessage: `upstream returned ${causeStatus}` })
+}
 
 const DESKTOP_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
@@ -101,21 +114,25 @@ export default defineEventHandler(async (event) => {
       headers: imageHeaders(cached.contentType, 'public, max-age=3600'),
     })
   }
+  if (negativeCache.get(url)) {
+    throw createError({ statusCode: 404, statusMessage: 'upstream previously failed (cached)' })
+  }
 
   let upstream: Response
   try {
     upstream = await fetchWithValidatedRedirects(url)
   } catch (error) {
     if (error instanceof Error && error.name === 'H3Error') throw error
+    negativeCache.set(url, true)
     throw createError({ statusCode: 502, statusMessage: 'upstream fetch failed' })
   }
 
   if (!upstream.ok) {
-    throw createError({ statusCode: 404, statusMessage: `upstream returned ${upstream.status}` })
+    failUpstream(url, upstream.status)
   }
   const contentType = upstream.headers.get('content-type') ?? ''
   if (!contentType.startsWith('image/')) {
-    throw createError({ statusCode: 415, statusMessage: 'not an image' })
+    failUpstream(url, 415)
   }
 
   const body = await readWithCap(upstream)
