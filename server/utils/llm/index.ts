@@ -23,7 +23,8 @@ export interface LlmProviderPlugin {
   defaultModels: { ranking: string; gate: string }
   /** 厂商默认端点；用户配置了 NUXT_LLM_BASE_URL 时以用户为准（兜底解析在 makeLlmModel 统一完成） */
   defaultBaseUrl: string
-  create(options: { apiKey: string; baseUrl: string }): ModelFactory
+  /** thinking = 思考模式开关；插件按需消费（qwen 用它注入 enable_thinking），不需要的插件忽略即可 */
+  create(options: { apiKey: string; baseUrl: string; thinking: boolean }): ModelFactory
 }
 
 const plugins: Record<string, LlmProviderPlugin> = {
@@ -55,6 +56,19 @@ export function resolveBaseUrl(configured: string, pluginDefault: string): strin
   return configured.trim() || pluginDefault
 }
 
+/**
+ * 配置 → 具体模型名（与 makeLlmModel 同源，不要求 apiKey）。
+ * 供任务日志展示真实生效的 provider/模型，避免「配了但没生效」无从排查。
+ */
+export function resolveModelIds(config: ServerConfig): { provider: string; ranking: string; gate: string } {
+  const plugin = resolvePlugin(config.llmProvider.trim() || DEFAULT_PROVIDER)
+  return {
+    provider: plugin.name,
+    ranking: config.modelRanking.trim() || plugin.defaultModels.ranking,
+    gate: config.modelGate.trim() || plugin.defaultModels.gate,
+  }
+}
+
 /** 配置 → 模型实例的唯一入口（gate/agent 都用它，保证行为一致）。 */
 export function makeLlmModel(config: ServerConfig, purpose: ModelPurpose): LanguageModel {
   const plugin = resolvePlugin(config.llmProvider.trim() || DEFAULT_PROVIDER)
@@ -65,7 +79,7 @@ export function makeLlmModel(config: ServerConfig, purpose: ModelPurpose): Langu
   const factory = plugin.create({
     apiKey,
     baseUrl: resolveBaseUrl(config.llmBaseUrl, plugin.defaultBaseUrl),
+    thinking: config.llmThinking,
   })
-  const configured = purpose === 'ranking' ? config.modelRanking : config.modelGate
-  return factory(configured.trim() || plugin.defaultModels[purpose])
+  return factory(resolveModelIds(config)[purpose])
 }

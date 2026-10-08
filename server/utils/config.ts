@@ -9,6 +9,10 @@ export interface ServerConfig {
   modelGate: string
   tavilyApiKey: string
   useFixture: boolean
+  /** 单次生成总超时；<=0 用 DEFAULT_TOTAL_TIMEOUT_MS。推理型模型建议放宽 */
+  llmTimeoutMs: number
+  /** 思考模式开关（仅对支持的厂商生效）：qwen 默认关闭以砍掉思维链时延，NUXT_LLM_THINKING=1 恢复 */
+  llmThinking: boolean
 }
 
 export class ConfigError extends Error {

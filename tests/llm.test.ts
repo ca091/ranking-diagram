@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_PROVIDER, listProviders, makeLlmModel, resolveBaseUrl, resolvePlugin } from '../server/utils/llm'
+import { DEFAULT_PROVIDER, listProviders, makeLlmModel, resolveBaseUrl, resolveModelIds, resolvePlugin } from '../server/utils/llm'
 import { checkGenerationConfig, ConfigError, type ServerConfig } from '../server/utils/config'
 
 function makeConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
@@ -11,6 +11,8 @@ function makeConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     modelGate: '',
     tavilyApiKey: 'tavily-key',
     useFixture: false,
+    llmTimeoutMs: 0,
+    llmThinking: false,
     ...overrides,
   }
 }
@@ -53,6 +55,19 @@ describe('LLM provider 注册表', () => {
     expect(resolveBaseUrl('   ', qwen.defaultBaseUrl)).toBe(qwen.defaultBaseUrl)
     expect(resolveBaseUrl('https://intl.example/v1', qwen.defaultBaseUrl)).toBe('https://intl.example/v1')
     expect(resolvePlugin('anthropic').defaultBaseUrl).toBe('https://api.anthropic.com/v1')
+  })
+
+  it('resolveModelIds：留空回落插件默认，显式配置优先；不要求 apiKey（评审：零覆盖）', () => {
+    const noKey = { llmApiKey: '' }
+    expect(resolveModelIds(makeConfig({ llmProvider: '', ...noKey })))
+      .toEqual({ provider: 'anthropic', ranking: 'claude-sonnet-5', gate: 'claude-haiku-4-5-20251001' })
+    expect(resolveModelIds(makeConfig({ llmProvider: 'qwen', ...noKey })))
+      .toEqual({ provider: 'qwen', ranking: 'qwen3.8-flash', gate: 'qwen3.8-flash' })
+    expect(resolveModelIds(makeConfig({ llmProvider: 'qwen', modelRanking: 'custom-x', ...noKey })).ranking)
+      .toBe('custom-x')
+    expect(() => resolveModelIds(makeConfig({ llmProvider: 'nope', ...noKey }))).toThrowError(ConfigError)
+    // makeLlmModel 与 resolveModelIds 同源：解析出的模型名与实际构造一致
+    expect(resolveModelIds(makeConfig()).ranking).toBe('claude-sonnet-5')
   })
 
   it('checkGenerationConfig 校验新变量名', () => {

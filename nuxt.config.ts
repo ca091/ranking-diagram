@@ -24,8 +24,14 @@ export default defineNuxtConfig({
     /** 留空则用当前 provider 插件的默认模型 */
     modelRanking: '',
     modelGate: '',
+    /** 单次生成总超时(ms)；0/留空 = 缺省 120000。推理型模型（如 qwen3.8 带思维链）建议 240000+ */
+    llmTimeoutMs: 0,
     tavilyApiKey: '',
     // '1' 时整条管线用内置样例数据，无需任何密钥即可验收前端/动效
     useFixture: '',
+    /** [generation-log] 任务级结构化日志开关（NUXT_LOG_GENERATION=0 关闭；见 server/utils/run-log.ts） */
+    logGeneration: true,
+    /** 思考模式：默认关（qwen3.8-flash 默认开思考，整链时延数倍）；NUXT_LLM_THINKING=1 恢复 */
+    llmThinking: false,
   },
 })
