@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampCount,
+  coerceRanking,
   DEFAULT_COUNT,
+  gateResultSchema,
   MAX_COUNT,
   MIN_COUNT,
+  parseModelJson,
   rankingResultSchema,
   validateRankingStructure,
 } from '#shared/ranking'
@@ -18,7 +21,7 @@ const entry = (rank: number, name = `N${rank}`, score = 100 - rank) => ({
 })
 
 describe('clampCount 数量护栏', () => {
-  it('非法输入回落默认 30', () => {
+  it('非法输入回落默认值', () => {
     expect(clampCount(undefined)).toBe(DEFAULT_COUNT)
     expect(clampCount(null)).toBe(DEFAULT_COUNT)
     expect(clampCount(Number.NaN)).toBe(DEFAULT_COUNT)
@@ -77,6 +80,89 @@ describe('rankingResultSchema 边界', () => {
         entries: [{ rank: 1, name: 'a', score: 1, oneLiner: 'x', sources: [] }],
       }).success,
     ).toBe(false)
+  })
+})
+
+describe('gateResultSchema 容错（机械小错不报废整次判定）', () => {
+  it('字符串布尔/数字被吸收', () => {
+    const ok = gateResultSchema.safeParse({ valid: 'true', normalizedPrompt: 'p', count: '12' })
+    expect(ok.success).toBe(true)
+    expect(ok.data?.valid).toBe(true)
+    expect(ok.data?.count).toBe(12)
+  })
+
+  it('超长的 reason/suggestion 截断而非报错', () => {
+    const ok = gateResultSchema.safeParse({
+      valid: false,
+      reason: '理'.repeat(400),
+      suggestion: '议'.repeat(300),
+    })
+    expect(ok.success).toBe(true)
+    expect(ok.data?.reason).toHaveLength(300)
+    expect(ok.data?.suggestion).toHaveLength(200)
+  })
+
+  it('optional 字段坏值直接丢弃，不影响判定', () => {
+    const ok = gateResultSchema.safeParse({ valid: true, count: 'abc', normalizedPrompt: 42 })
+    expect(ok.success).toBe(true)
+    expect(ok.data?.count).toBeUndefined()
+    expect(ok.data?.normalizedPrompt).toBeUndefined()
+  })
+
+  it('valid 不可辨认仍然失败', () => {
+    expect(gateResultSchema.safeParse({ normalizedPrompt: 'p' }).success).toBe(false)
+    expect(gateResultSchema.safeParse({ valid: 'maybe' }).success).toBe(false)
+  })
+})
+
+describe('parseModelJson', () => {
+  it('剥 ```json 围栏后解析', () => {
+    expect(parseModelJson('```json\n{"a": 1}\n```')).toEqual({ a: 1 })
+    expect(parseModelJson('```\n{"a": 1}\n```')).toEqual({ a: 1 })
+  })
+
+  it('非 JSON 返回 undefined，由调用方决定报法', () => {
+    expect(parseModelJson('not json at all')).toBeUndefined()
+    expect(parseModelJson('{"a":')).toBeUndefined()
+  })
+})
+
+describe('coerceRanking 确定性整形', () => {
+  const wrap = (...entries: ReturnType<typeof entry>[]) => ({ title: 'T', entries })
+
+  it('乱序/跳号名次 → 重排并重编号 1..n', () => {
+    const { result, issues } = coerceRanking(wrap(entry(5, 'e', 50), entry(2, 'b', 80), entry(9, 'i', 30)), 3)
+    expect(issues).toEqual([])
+    expect(result!.entries.map((e) => [e.rank, e.name])).toEqual([[1, 'b'], [2, 'e'], [3, 'i']])
+  })
+
+  it('重复条目名去重（大小写/空白不敏感，保留先出现者）', () => {
+    const { result } = coerceRanking(wrap(entry(1, ' Luffy ', 90), entry(2, 'luffy', 80), entry(3, 'zoro', 70)), 2)
+    expect(result!.entries.map((e) => e.name)).toEqual([' Luffy ', 'zoro'])
+  })
+
+  it('分数随名次上升 → 压平为前值，不再触发模型修复', () => {
+    const { result } = coerceRanking(wrap(entry(1, 'a', 60), entry(2, 'b', 95), entry(3, 'c', 30)), 3)
+    expect(result!.entries.map((e) => e.score)).toEqual([60, 60, 30])
+  })
+
+  it('多吐条目 → 截尾到恰好 count', () => {
+    const { result } = coerceRanking(wrap(entry(1, 'a'), entry(2, 'b'), entry(3, 'c'), entry(4, 'd')), 3)
+    expect(result!.entries).toHaveLength(3)
+    expect(result!.entries.at(-1)!.name).toBe('c')
+  })
+
+  it('条目不足 → result=null 且 issues 说明少于要求（需要新事实，只能走修复回路）', () => {
+    const { result, issues } = coerceRanking(wrap(entry(1, 'a'), entry(2, 'b')), 5)
+    expect(result).toBeNull()
+    expect(issues[0]!.message).toContain('少于')
+  })
+
+  it('不修改入参（immutability 规范）', () => {
+    const raw = wrap(entry(2, 'b', 80), entry(1, 'a', 90))
+    const snapshot = JSON.stringify(raw)
+    coerceRanking(raw, 2)
+    expect(JSON.stringify(raw)).toBe(snapshot)
   })
 })
 
