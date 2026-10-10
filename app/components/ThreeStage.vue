@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { RankingResult } from '#shared/ranking'
 import type { HoverInfo } from '../lib/three/scene'
+import { useStageTooltip } from '../composables/useStageTooltip'
 import { DEFAULT_CHOREO, type ChoreoConfig } from '../lib/three/choreography'
 
 const props = defineProps<{
@@ -33,8 +34,7 @@ const containerRef = ref<HTMLElement | null>(null)
 const scrollRef = ref<HTMLElement | null>(null)
 const stage = shallowRef<StageHandle | null>(null)
 const hover = ref<HoverInfo | null>(null)
-const tooltipRef = ref<HTMLElement | null>(null)
-const tooltipStyle = ref({ left: '0px', top: '0px' })
+const { tooltipRef, tooltipStyle } = useStageTooltip(hover, containerRef)
 const webglError = ref(false)
 /** 内容超宽时的滚动代理宽度（px）；0 = 无需滚动 */
 const scrollInnerPx = ref(0)
@@ -123,28 +123,7 @@ watch(
   },
 )
 
-/**
- * hover 卡片收进视口：水平按半宽 clamp（贴边柱体不再被裁），
- * 垂直优先放在锚点（柱顶）上方，高度不够（近顶部的长柱）翻到下方。
- * 需要先渲染才能量到卡片实际尺寸，故在 hover 更新的下一帧精确定位。
- */
-watch(hover, async (h) => {
-  if (!h) return
-  tooltipStyle.value = { left: `${h.x}px`, top: `${Math.max(h.y - 10, 10)}px` }
-  await nextTick()
-  const el = tooltipRef.value
-  const holder = containerRef.value
-  if (!el || !holder) return
-  const pad = 10
-  const cardW = el.offsetWidth
-  const cardH = el.offsetHeight
-  const viewW = holder.clientWidth
-  const viewH = holder.clientHeight
-  const left = Math.min(Math.max(h.x, cardW / 2 + pad), Math.max(viewW - cardW / 2 - pad, pad))
-  const above = h.y - 10 - cardH
-  const top = above >= pad ? above : Math.min(h.y + 18, Math.max(viewH - cardH - pad, pad))
-  tooltipStyle.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` }
-})
+// hover 卡片的视口收进定位逻辑抽至 useStageTooltip（与 ParadeStage 共用）
 
 function replay() {
   hover.value = null

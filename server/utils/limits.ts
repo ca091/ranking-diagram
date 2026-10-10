@@ -1,6 +1,6 @@
 /** 单次生成的成本与时延硬顶（设计共识 Q16/Q20）。 */
-/** 与系统提示「2-4 次批量检索」严格对齐：此前 6 会诱导模型多轮检索，逼近步数顶后无终稿（No output generated） */
-export const MAX_SEARCHES = 4
+// 与 UI 计数徽章共享单一事实源，故从 #shared 再导出
+export { MAX_SEARCHES } from '#shared/limits'
 /** 每次模型调用 = 一个 step；prepareStep 会提前收走工具保证有终稿步，这里只作失控保险丝 */
 export const MAX_STEPS = 8
 /** 缺省总超时；推理型模型可用 NUXT_LLM_TIMEOUT_MS 放宽（见 server/utils/config） */

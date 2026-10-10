@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { GenerationPhase } from '#shared/events'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { PIPELINE_PHASES, usePipelineSteps } from '../composables/usePipelineSteps'
+import { MAX_SEARCHES } from '#shared/limits'
 import { SAMPLE_PROMPTS } from '../lib/samples'
 
 const { status, phase, stageLabel, searchUsed, payload, rejection, error, generate, cancel } = useGenerate()
@@ -17,33 +18,9 @@ const uiVisible = ref(true)
 const autoHidden = ref(false)
 const stageRef = ref<StageExpose | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const running = computed(() => status.value === 'running')
-
-const PHASES: Array<{ key: GenerationPhase; label: string }> = [
-  { key: 'validating', label: '校验可排行性' },
-  { key: 'ranking', label: '检索 · 排行' },
-  { key: 'finalizing', label: '数据定稿' },
-]
-const phaseIndex = computed(() => PHASES.findIndex((p) => p.key === phase.value))
-
-function stateOf(stepIndex: number): 'done' | 'active' | 'failed' | 'pending' {
-  if (error.value && phase.value) {
-    const failedIndex = PHASES.findIndex((p) => p.key === error.value!.phase)
-    if (stepIndex === failedIndex) return 'failed'
-    if (failedIndex >= 0 && stepIndex < failedIndex) return 'done'
-  }
-  if (status.value === 'success') return 'done'
-  if (!running.value) return 'pending'
-  if (phaseIndex.value < 0) return 'pending'
-  if (stepIndex < phaseIndex.value) return 'done'
-  if (stepIndex === phaseIndex.value) return 'active'
-  return 'pending'
-}
-
-function errorPhaseLabel(): string {
-  const key = error.value?.phase
-  return PHASES.find((p) => p.key === key)?.label ?? (key === 'config' ? '服务端配置' : key === 'timeout' ? '超时' : '输入')
-}
+// 三步骤状态派生与 parade.vue 共用 usePipelineSteps（评审 Duplicated Code）
+const PHASES = PIPELINE_PHASES
+const { running, stateOf, errorPhaseLabel } = usePipelineSteps(status, phase, error)
 
 async function submit(p?: string, force = false) {
   const text = (p ?? prompt.value).trim()
@@ -177,7 +154,7 @@ onBeforeUnmount(() => {
           <p class="text-xs text-zinc-400">
             {{ stageLabel || '准备中…' }}
             <UBadge v-if="searchUsed > 0" color="neutral" variant="subtle" size="xs" class="ml-1">
-              检索 {{ searchUsed }}/12
+              检索 {{ searchUsed }}/{{ MAX_SEARCHES }}
             </UBadge>
           </p>
           <UButton size="xs" color="neutral" variant="outline" @click="cancel">取消</UButton>
@@ -250,6 +227,7 @@ onBeforeUnmount(() => {
         <p class="mt-auto border-t border-white/5 pt-2 text-[11px] leading-relaxed text-zinc-400">
           Enter 生成 · F 自适应画面 · J 隐藏/显示面板<br>
           拖拽旋转 · 滚轮缩放 · 悬停条目看来源<br>
+          <NuxtLink to="/parade" class="text-blue-400 hover:text-blue-300">切换到 Parade 模式 →</NuxtLink>
         </p>
       </aside>
     </Transition>
